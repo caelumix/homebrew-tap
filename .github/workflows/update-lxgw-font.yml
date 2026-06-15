@@ -1,0 +1,53 @@
+name: Update LXGW WenKai Font
+
+on:
+  schedule:
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check and update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/lxgw/LxgwWenKai-Screen/releases/latest)
+
+          TAG=$(echo "$RELEASE" | jq -r .tag_name)
+          VERSION="${TAG#v}"
+
+          CURRENT_VERSION=$(grep -oP 'version "\K[^"]+' Casks/font-lxgw-wenkai-screen.rb | head -1)
+
+          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
+            echo "Already at version ${VERSION}, skipping"
+            exit 0
+          fi
+
+          echo "Updating from ${CURRENT_VERSION} to ${VERSION}"
+
+          ASSETS=$(echo "$RELEASE" | jq -r '.assets[] | "\(.name)|\(.digest)"')
+
+          for cask_file in Casks/font-lxgw-wenkai*.rb; do
+            ASSET_NAME=$(grep -oP '/download/v[^/]+/\K[^"]+' "$cask_file" | head -1)
+            DIGEST=$(echo "$ASSETS" | grep "^${ASSET_NAME}|" | cut -d'|' -f2)
+            SHA256="${DIGEST#sha256:}"
+
+            sed -i "s/version \".*\"/version \"${VERSION}\"/" "$cask_file"
+            sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$cask_file"
+            echo "Updated ${cask_file}"
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/font-lxgw-wenkai*.rb
+          git diff --cached --quiet || git commit -m "chore: update LXGW WenKai Screen to ${TAG}"
+          git push
