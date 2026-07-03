@@ -6,5 +6,5 @@ cask "font-yuniversus" do
   name "Yuniversus"
   homepage "https://github.com/forfudan/yuhao-ime-release"
 
-  font "Yuniversus.ttf"
+  font "fonts/Yuniversus.ttf"
 end
