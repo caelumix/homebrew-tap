@@ -1,6 +1,6 @@
 cask "font-iosevka-custom-nerd-font" do
-  version "34.8.0-1"
-  sha256 "624d21c1abe57ab5b02dd0d270f02121d73fcd06b1259f01a9de69e4b34a2537"
+  version "34.8.0"
+  sha256 "17e4bd49e66c42ce5b0d423a9b9b87ae7b829a70a665a53a50b6c08d78002e5a"
 
   url "https://github.com/caelumix/Custom-Iosevka-Nerd-Font/releases/download/v#{version}/IosevkaCustom-#{version}.zip"
   name "Iosevka Custom Nerd Font"
