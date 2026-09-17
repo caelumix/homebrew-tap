@@ -14,5 +14,4 @@ cask "font-iosevka-custom-nerd-font" do
   font "IosevkaCustomNerdFontMono-ExtendedItalic.ttf"
   font "IosevkaCustomNerdFontMono-Italic.ttf"
   font "IosevkaCustomNerdFontMono-Regular.ttf"
-
 end
