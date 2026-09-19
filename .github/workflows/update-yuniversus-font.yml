@@ -18,33 +18,99 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          CASK=Casks/font-yuniversus.rb
+          REPO=forfudan/yuhao-ime-release
+          FONT=fonts/Yuniversus.ttf
+
+          # 字體沒有自己的版本號（name 表的 Version 停在 1.00）：sha256 判是否變更，head.modified 判是否更舊
+          font_info() {
+            local f
+            f="$(mktemp)"
+            unzip -p "$1" "$FONT" > "$f"
+            python3 -c 'import hashlib,struct,sys;d=open(sys.argv[1],"rb").read();n=struct.unpack(">H",d[4:6])[0];i=[d[12+j*16:16+j*16] for j in range(n)].index(b"head");o=struct.unpack(">I",d[20+i*16:24+i*16])[0];print(hashlib.sha256(d).hexdigest(),struct.unpack(">Q",d[o+28:o+36])[0])' "$f"
+            rm -f "$f"
+          }
+
+          core() { grep -oP '^[0-9]+(\.[0-9]+)*' <<<"$1"; }
+
           RELEASE=$(curl -fsSL \
             -H "Authorization: Bearer ${GH_TOKEN}" \
-            https://api.github.com/repos/forfudan/yuhao-ime-release/releases/latest)
+            "https://api.github.com/repos/${REPO}/releases/latest")
 
           TAG=$(echo "$RELEASE" | jq -r .tag_name)
           VERSION="${TAG#v}"
 
-          CURRENT_VERSION=$(grep -oP 'version "\K[^"]+' Casks/font-yuniversus.rb | head -1)
+          CASK_VERSION=$(grep -oP 'version "\K[^"]+' "$CASK" | head -1)
+          CASK_SHA=$(grep -oP 'sha256 "\K[^"]+' "$CASK" | head -1)
+          CASK_URL=$(grep -oP 'url "\K[^"]+' "$CASK" | head -1)
 
-          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
-            echo "Already at version ${VERSION}, skipping"
+          # 資產由作者手動命名且屢次改動，故按內容挑：按大小升序取第一個含 $FONT 的包
+          ASSET=""
+          while read -r name; do
+            if [ -n "$ASSET" ]; then
+              break
+            fi
+            tmp="$(mktemp)"
+            if curl -fsSL -o "$tmp" \
+                 "https://github.com/${REPO}/releases/download/${TAG}/${name}" &&
+               unzip -Z1 "$tmp" | grep -qx "$FONT"; then
+              ASSET="$name"
+              NEW_URL="https://github.com/${REPO}/releases/download/${TAG}/${name}"
+              NEW_SHA="$(sha256sum "$tmp" | cut -d' ' -f1)"
+              read -r NEW_FONT NEW_BUILD < <(font_info "$tmp")
+            fi
+            rm -f "$tmp"
+          done < <(echo "$RELEASE" |
+            jq -r '.assets[] | select(.name | endswith(".zip")) | "\(.size) \(.name)"' |
+            sort -n | cut -d' ' -f2)
+
+          if [ -z "$ASSET" ]; then
+            echo "No asset of ${TAG} contains ${FONT}" >&2
+            exit 1
+          fi
+
+          # sha 與 url 都要對上才算已最新：原地改名時字節不變，只比 sha 會漏掉已死的 url
+          if [ "$CASK_SHA" = "$NEW_SHA" ] && [ "$CASK_URL" = "$NEW_URL" ]; then
+            echo "Already at ${TAG}, skipping"
             exit 0
           fi
 
-          echo "Updating from ${CURRENT_VERSION} to ${VERSION}"
+          # 舊 pin 下載得到且 sha 未變才做比較，被刪或被原地替換就重新 pin
+          tmp="$(mktemp)"
+          OLD_FONT=""
+          OLD_BUILD=""
+          if curl -fsSL -o "$tmp" "$CASK_URL" &&
+            [ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$CASK_SHA" ]; then
+            read -r OLD_FONT OLD_BUILD < <(font_info "$tmp")
+          fi
+          rm -f "$tmp"
 
-          ASSETS=$(echo "$RELEASE" | jq -r '.assets[] | "\(.name)|\(.digest)"')
-          ASSET_NAME="riyue_lingming_${TAG}.zip"
-          DIGEST=$(echo "$ASSETS" | grep "^${ASSET_NAME}|" | cut -d'|' -f2)
-          SHA256="${DIGEST#sha256:}"
+          if [ "$OLD_FONT" = "$NEW_FONT" ]; then
+            echo "Font unchanged since ${CASK_VERSION} (${NEW_FONT}), keeping pin"
+            exit 0
+          fi
 
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/font-yuniversus.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/font-yuniversus.rb
-          echo "Updated Casks/font-yuniversus.rb"
+          # 手動上傳可能把舊包傳進新發佈、或把舊 tag 重傳成 latest —— 兩者都拒絕，轉人工
+          if [ -n "$OLD_BUILD" ] && [ "$NEW_BUILD" -lt "$OLD_BUILD" ]; then
+            echo "Font in ${TAG} was built $(date -u -d "@$((NEW_BUILD - 2082844800))" +%F)," \
+              "older than the pinned one in ${CASK_VERSION}" \
+              "($(date -u -d "@$((OLD_BUILD - 2082844800))" +%F))" >&2
+            exit 1
+          fi
+
+          if ! printf '%s\n%s\n' "$(core "$CASK_VERSION")" "$(core "$VERSION")" | sort -VC; then
+            echo "Latest release ${TAG} is older than the pinned ${CASK_VERSION}" >&2
+            exit 1
+          fi
+
+          echo "Updating from ${CASK_VERSION} to ${VERSION}"
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$CASK"
+          sed -i "s/sha256 \".*\"/sha256 \"${NEW_SHA}\"/" "$CASK"
+          sed -i "s|^  url \".*\"$|  url \"${NEW_URL}\"|" "$CASK"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/font-yuniversus.rb
+          git add "$CASK"
           git diff --cached --quiet || git commit -m "chore: update Yuniversus to ${TAG}"
           git push
