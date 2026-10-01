@@ -1,6 +1,6 @@
 cask "font-noto-color-emoji-cbdt" do
-  version "2.051"
-  sha256 "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b"
+  version "2026-09-24-unicode18_0"
+  sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
   url "https://github.com/googlefonts/noto-emoji/raw/v#{version}/fonts/NotoColorEmoji.ttf"
   name "Noto Color Emoji CBDT"
