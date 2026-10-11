@@ -18,6 +18,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
           RELEASE=$(curl -fsSL \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             https://api.github.com/repos/googlefonts/noto-emoji/releases/latest)
@@ -36,7 +38,7 @@ jobs:
           echo "Updating from ${CURRENT_VERSION} to ${VERSION}"
 
           SHA256=$(curl -fsSL \
-            "https://github.com/googlefonts/noto-emoji/raw/v${TAG}/fonts/NotoColorEmoji.ttf" \
+            "https://github.com/googlefonts/noto-emoji/raw/${TAG}/2D/fonts/NotoColorEmoji.ttf" \
             | sha256sum | cut -d' ' -f1)
 
           sed -i "s/version \".*\"/version \"${VERSION}\"/" "$CASK_FILE"
